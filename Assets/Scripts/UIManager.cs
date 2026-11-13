@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.EventSystems;
 
 public class UIManager : MonoBehaviour
 {
@@ -102,10 +101,10 @@ public class UIManager : MonoBehaviour
         Transform oldBtn = mobileControls.transform.Find("Btn_Left");
         if (oldBtn != null)
         {
-            Image existingImg = oldBtn.GetComponent<Image>();
-            if (existingImg != null && existingImg.sprite != null && existingImg.sprite.name.Contains("leftarrow"))
+            MultiTouchButton existingMtb = oldBtn.GetComponent<MultiTouchButton>();
+            if (existingMtb != null)
             {
-                // Already setup with leftarrow sprite
+                // Already setup with MultiTouchButton
                 return;
             }
 
@@ -123,33 +122,28 @@ public class UIManager : MonoBehaviour
         // 1. Left Arrow Button (Bottom-Left)
         GameObject btnLeft = CreateArrowButton(mobileControls.transform, "Btn_Left", sprLeft,
             new Vector2(0f, 0f), new Vector2(0f, 0f),
-            new Vector2(150f, 150f), new Vector2(160f, 160f));
-        AddEventTrigger(btnLeft, EventTriggerType.PointerDown, () => OnLeftButton(true));
-        AddEventTrigger(btnLeft, EventTriggerType.PointerUp, () => OnLeftButton(false));
-        AddEventTrigger(btnLeft, EventTriggerType.PointerExit, () => OnLeftButton(false));
-        AddEventTrigger(btnLeft, EventTriggerType.Cancel, () => OnLeftButton(false));
-        AddEventTrigger(btnLeft, EventTriggerType.Deselect, () => OnLeftButton(false));
+            new Vector2(140f, 140f), new Vector2(165f, 165f));
+        MultiTouchButton mtbLeft = btnLeft.AddComponent<MultiTouchButton>();
+        mtbLeft.onStateChanged = (pressed) => OnLeftButton(pressed);
 
         // 2. Right Arrow Button (Bottom-Left)
         GameObject btnRight = CreateArrowButton(mobileControls.transform, "Btn_Right", sprRight,
             new Vector2(0f, 0f), new Vector2(0f, 0f),
-            new Vector2(350f, 150f), new Vector2(160f, 160f));
-        AddEventTrigger(btnRight, EventTriggerType.PointerDown, () => OnRightButton(true));
-        AddEventTrigger(btnRight, EventTriggerType.PointerUp, () => OnRightButton(false));
-        AddEventTrigger(btnRight, EventTriggerType.PointerExit, () => OnRightButton(false));
-        AddEventTrigger(btnRight, EventTriggerType.Cancel, () => OnRightButton(false));
-        AddEventTrigger(btnRight, EventTriggerType.Deselect, () => OnRightButton(false));
+            new Vector2(340f, 140f), new Vector2(165f, 165f));
+        MultiTouchButton mtbRight = btnRight.AddComponent<MultiTouchButton>();
+        mtbRight.onStateChanged = (pressed) => OnRightButton(pressed);
 
         // 3. Jump Arrow Button (Bottom-Right, uparrow.png)
         GameObject btnJump = CreateArrowButton(mobileControls.transform, "Btn_Jump", sprUp,
             new Vector2(1f, 0f), new Vector2(1f, 0f),
-            new Vector2(-170f, 160f), new Vector2(190f, 190f));
-        AddEventTrigger(btnJump, EventTriggerType.PointerDown, () => OnJumpButton());
+            new Vector2(-160f, 150f), new Vector2(195f, 195f));
+        MultiTouchButton mtbJump = btnJump.AddComponent<MultiTouchButton>();
+        mtbJump.onPointerDown = () => OnJumpButton();
     }
 
     private GameObject CreateArrowButton(Transform parent, string name, Sprite sprite, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPos, Vector2 size)
     {
-        GameObject obj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button), typeof(EventTrigger));
+        GameObject obj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button));
         obj.layer = 5;
         obj.transform.SetParent(parent, false);
 
@@ -169,6 +163,7 @@ public class UIManager : MonoBehaviour
 
         Button btn = obj.GetComponent<Button>();
         btn.targetGraphic = img;
+        btn.navigation = new Navigation { mode = Navigation.Mode.None }; // Crucial: Disables navigation stealing!
         ColorBlock cb = btn.colors;
         cb.normalColor = Color.white;
         cb.highlightedColor = new Color(0.9f, 0.9f, 0.9f, 1f);
@@ -176,17 +171,6 @@ public class UIManager : MonoBehaviour
         btn.colors = cb;
 
         return obj;
-    }
-
-    private void AddEventTrigger(GameObject target, EventTriggerType eventType, UnityEngine.Events.UnityAction callback)
-    {
-        EventTrigger trigger = target.GetComponent<EventTrigger>();
-        if (trigger == null) trigger = target.AddComponent<EventTrigger>();
-
-        EventTrigger.Entry entry = new EventTrigger.Entry();
-        entry.eventID = eventType;
-        entry.callback.AddListener((data) => { callback(); });
-        trigger.triggers.Add(entry);
     }
 
     public void OnLeftButton(bool isDown)

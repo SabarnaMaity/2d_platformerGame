@@ -1,4 +1,3 @@
-
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -29,6 +28,7 @@ public class PlayerController : MonoBehaviour
     private bool isRightHeld = false;
 
     public bool isPaused = false;
+    public bool isMovementLocked { get; private set; } = false;
 
     public ParticleSystem footsteps;
     private ParticleSystem.EmissionModule footEmissions;
@@ -58,7 +58,7 @@ public class PlayerController : MonoBehaviour
         ResetMovementState();
     }
 
-    private void ResetMovementState()
+    public void ResetMovementState()
     {
         isLeftHeld = false;
         isRightHeld = false;
@@ -67,6 +67,15 @@ public class PlayerController : MonoBehaviour
         if (rb != null)
         {
             rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
+        }
+    }
+
+    public void SetMovementLocked(bool locked)
+    {
+        isMovementLocked = locked;
+        if (locked)
+        {
+            ResetMovementState();
         }
     }
 
@@ -107,7 +116,7 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
-        // Fail-safe: if running on a touch screen and no touches exist, ensure buttons are not stuck held down
+        // Fail-safe: if running on a touch screen and no touches exist, ensure buttons are released
         if (Application.isMobilePlatform && Input.touchCount == 0 && (isLeftHeld || isRightHeld))
         {
             isLeftHeld = false;
@@ -116,6 +125,12 @@ public class PlayerController : MonoBehaviour
         }
 
         isGroundedBool = IsGrounded();
+
+        if (isMovementLocked)
+        {
+            SetAnimations();
+            return;
+        }
 
         if (isGroundedBool)
         {
@@ -202,6 +217,12 @@ public class PlayerController : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (isMovementLocked)
+        {
+            rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
+            return;
+        }
+
         float move = 0f;
 
 #if UNITY_EDITOR || UNITY_STANDALONE
@@ -253,7 +274,7 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    // Mobile button controls
+    // Multi-Touch button controls
     public void SetLeftHeld(bool held)
     {
         isLeftHeld = held;
@@ -268,11 +289,16 @@ public class PlayerController : MonoBehaviour
 
     private void UpdateMobileMove()
     {
-        if (isLeftHeld && !isRightHeld)
+        if (isLeftHeld && isRightHeld)
+        {
+            // Consistent handling: cancel out when both are held simultaneously
+            mobileMoveX = 0f;
+        }
+        else if (isLeftHeld)
         {
             mobileMoveX = -1f;
         }
-        else if (isRightHeld && !isLeftHeld)
+        else if (isRightHeld)
         {
             mobileMoveX = 1f;
         }
@@ -291,6 +317,8 @@ public class PlayerController : MonoBehaviour
 
     public void MobileJump()
     {
+        if (isMovementLocked) return;
+
         if (isGroundedBool)
         {
             Jump(jumpForce);

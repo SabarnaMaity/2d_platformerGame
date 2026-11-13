@@ -28,6 +28,7 @@ public class GameManager : MonoBehaviour
     private int coinCount = 0;
     private int gemCount = 0;
     private bool isGameOver = false;
+    private bool isRespawning = false;
     private Vector3 playerPosition;
 
     // Level Complete
@@ -52,12 +53,23 @@ public class GameManager : MonoBehaviour
             UIManager.instance.fadeFromBlack = true;
         }
 
+        if (playerController == null)
+        {
+            playerController = Object.FindAnyObjectByType<PlayerController>();
+        }
+
         if (playerController != null)
         {
             playerPosition = playerController.transform.position;
         }
 
         FindTotalPickups();
+
+        // Reset Lives to 3 on starting a new level
+        if (HealthManager.instance != null)
+        {
+            HealthManager.instance.ResetLives();
+        }
 
         // If nextLevelButton wasn't explicitly assigned in the inspector, try to find it under levelCompletePanel
         if (nextLevelButton == null && levelCompletePanel != null)
@@ -92,23 +104,74 @@ public class GameManager : MonoBehaviour
 
     public void Death()
     {
-        if (!isGameOver)
+        // Avoid multiple life deductions from a single death event
+        if (isRespawning || isGameOver) return;
+        isRespawning = true;
+
+        StartCoroutine(RespawnCoroutine());
+    }
+
+    public IEnumerator RespawnCoroutine()
+    {
+        Debug.Log("Player died - Processing life deduction and respawn");
+
+        // 1. Temporarily disable player movement
+        if (playerController != null)
         {
-            if (UIManager.instance != null)
+            playerController.SetMovementLocked(true);
+            if (playerController.ImpactEffect != null)
             {
-                UIManager.instance.DisableMobileControls();
-                UIManager.instance.fadeToBlack = true;
+                playerController.ImpactEffect.transform.position = playerController.transform.position;
+                playerController.ImpactEffect.Play();
             }
-
-            if (playerController != null)
-            {
-                playerController.gameObject.SetActive(false);
-            }
-
-            StartCoroutine(DeathCoroutine());
-            isGameOver = true;
-            Debug.Log("Died");
         }
+
+        // 2. Reduce life count and update Heart UI immediately (cycles 3 -> 2 -> 1 -> 0 -> resets to 3)
+        if (HealthManager.instance != null)
+        {
+            HealthManager.instance.LoseLife();
+        }
+
+        // 3. Briefly disable mobile controls and fade screen
+        if (UIManager.instance != null)
+        {
+            UIManager.instance.DisableMobileControls();
+            UIManager.instance.fadeToBlack = true;
+        }
+
+        yield return new WaitForSeconds(0.6f);
+
+        // 4. Respawn player at checkpoint / starting position
+        if (playerController != null)
+        {
+            playerController.transform.position = playerPosition;
+            playerController.ResetMovementState();
+        }
+
+        yield return new WaitForSeconds(0.3f);
+
+        // 5. Restore screen fade and mobile controls
+        if (UIManager.instance != null)
+        {
+            UIManager.instance.fadeToBlack = false;
+            UIManager.instance.fadeFromBlack = true;
+            UIManager.instance.EnableMobileControls();
+        }
+
+        // 6. Restore normal player movement and input
+        if (playerController != null)
+        {
+            playerController.SetMovementLocked(false);
+        }
+
+        // 7. Safety invulnerability buffer so immediate contact doesn't multi-kill
+        yield return new WaitForSeconds(0.5f);
+        isRespawning = false;
+    }
+
+    public void SetCheckpoint(Vector3 newCheckpointPosition)
+    {
+        playerPosition = newCheckpointPosition;
     }
 
     public void FindTotalPickups()
@@ -186,26 +249,9 @@ public class GameManager : MonoBehaviour
         // Fade back from black so UI is clearly visible
         if (UIManager.instance != null)
         {
+            UIManager.instance.DisableMobileControls();
             UIManager.instance.fadeToBlack = false;
             UIManager.instance.fadeFromBlack = true;
-        }
-    }
-
-    public IEnumerator DeathCoroutine()
-    {
-        yield return new WaitForSeconds(1f);
-
-        if (playerController != null)
-        {
-            playerController.transform.position = playerPosition;
-        }
-
-        yield return new WaitForSeconds(1f);
-
-        if (isGameOver)
-        {
-            // Dynamically reload current active scene
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
     }
 
