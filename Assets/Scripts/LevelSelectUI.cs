@@ -11,6 +11,9 @@ public class LevelSelectUI : MonoBehaviour
     [Header("Level Buttons (10 Buttons)")]
     [SerializeField] private Button[] levelButtons;
 
+    [Header("Back Button")]
+    [SerializeField] private Button backButton;
+
     [Header("Visual Colors")]
     [SerializeField] private Color unlockedColor = new Color(1f, 1f, 1f, 1f);
     [SerializeField] private Color lockedColor = new Color(0.45f, 0.45f, 0.45f, 0.6f);
@@ -19,7 +22,7 @@ public class LevelSelectUI : MonoBehaviour
     private void Start()
     {
         // Auto-find buttons if not manually assigned in inspector
-        if ((levelButtons == null || levelButtons.Length == 0) && levelSelectPanel != null)
+        if ((levelButtons == null || levelButtons.Length < 10) && levelSelectPanel != null)
         {
             Button[] foundButtons = levelSelectPanel.GetComponentsInChildren<Button>(true);
             var btnList = new System.Collections.Generic.List<Button>();
@@ -38,6 +41,26 @@ public class LevelSelectUI : MonoBehaviour
             }
         }
 
+        // Auto-find and wire up BackButton on levelSelectPanel
+        if (backButton == null && levelSelectPanel != null)
+        {
+            Button[] allBtns = levelSelectPanel.GetComponentsInChildren<Button>(true);
+            foreach (Button b in allBtns)
+            {
+                if (b.gameObject.name.ToLower().Contains("back"))
+                {
+                    backButton = b;
+                    break;
+                }
+            }
+        }
+
+        if (backButton != null)
+        {
+            backButton.onClick.RemoveListener(CloseLevelSelect);
+            backButton.onClick.AddListener(CloseLevelSelect);
+        }
+
         SetupLevelButtons();
 
         // Check if we should immediately open Level Selection (e.g. from in-game "Level Select" button)
@@ -49,6 +72,18 @@ public class LevelSelectUI : MonoBehaviour
         else
         {
             ShowMainMenu();
+        }
+    }
+
+    private void Update()
+    {
+        // Support Android back key / PC Escape key to return to Main Menu
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            if (levelSelectPanel != null && levelSelectPanel.activeSelf)
+            {
+                CloseLevelSelect();
+            }
         }
     }
 
@@ -155,4 +190,3 @@ public class LevelSelectUI : MonoBehaviour
         return 0;
     }
 }
-

@@ -3,13 +3,12 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
-public enum Controls { mobile,pc}
+public enum Controls { mobile, pc }
 
 public class PlayerController : MonoBehaviour
 {
-
-
     public float moveSpeed = 5f;
     public float jumpForce = 10f;
     public float doubleJumpForce = 8f;
@@ -23,9 +22,12 @@ public class PlayerController : MonoBehaviour
     public Animator playeranim;
 
     public Controls controlmode;
-   
 
-    private float moveX;
+    private float moveX = 0f;
+    private float mobileMoveX = 0f;
+    private bool isLeftHeld = false;
+    private bool isRightHeld = false;
+
     public bool isPaused = false;
 
     public ParticleSystem footsteps;
@@ -34,22 +36,46 @@ public class PlayerController : MonoBehaviour
     public ParticleSystem ImpactEffect;
     private bool wasonGround;
 
-
-   // public GameObject projectile;
-   // public Transform firePoint;
-
     public float fireRate = 0.5f; // Time between each shot
     private float nextFireTime = 0f; // Time of the next allowed shot
 
+    private void Awake()
+    {
+        rb = GetComponent<Rigidbody2D>();
+        if (playeranim == null)
+        {
+            playeranim = GetComponentInChildren<Animator>();
+        }
+    }
 
-    
+    private void OnEnable()
+    {
+        ResetMovementState();
+    }
 
+    private void OnDisable()
+    {
+        ResetMovementState();
+    }
 
-
+    private void ResetMovementState()
+    {
+        isLeftHeld = false;
+        isRightHeld = false;
+        mobileMoveX = 0f;
+        moveX = 0f;
+        if (rb != null)
+        {
+            rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
+        }
+    }
 
     private void Start()
     {
-        rb = GetComponent<Rigidbody2D>();
+        if (rb == null)
+        {
+            rb = GetComponent<Rigidbody2D>();
+        }
         if (playeranim == null)
         {
             playeranim = GetComponentInChildren<Animator>();
@@ -67,34 +93,42 @@ public class PlayerController : MonoBehaviour
         }
         groundLayer |= (1 << 0); // Default layer
 
-        if (controlmode == Controls.mobile && UIManager.instance != null)
+#if UNITY_ANDROID || UNITY_IOS
+        controlmode = Controls.mobile;
+#endif
+
+        if (UIManager.instance != null)
         {
             UIManager.instance.EnableMobileControls();
         }
+
+        ResetMovementState();
     }
 
     private void Update()
     {
+        // Fail-safe: if running on a touch screen and no touches exist, ensure buttons are not stuck held down
+        if (Application.isMobilePlatform && Input.touchCount == 0 && (isLeftHeld || isRightHeld))
+        {
+            isLeftHeld = false;
+            isRightHeld = false;
+            UpdateMobileMove();
+        }
+
         isGroundedBool = IsGrounded();
 
         if (isGroundedBool)
         {
             canDoubleJump = true; // Reset double jump when grounded
 
-            if (controlmode == Controls.pc)
-            {
-                moveX = Input.GetAxis("Horizontal");
-            }
-
-
-            if (Input.GetButtonDown("Jump"))
+            if (Input.GetButtonDown("Jump") || Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W))
             {
                 Jump(jumpForce);
             }
         }
         else
         {
-            if (canDoubleJump && Input.GetButtonDown("Jump"))
+            if (canDoubleJump && (Input.GetButtonDown("Jump") || Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W)))
             {
                 Jump(doubleJumpForce);
                 canDoubleJump = false; // Disable double jump until grounded again
@@ -103,13 +137,6 @@ public class PlayerController : MonoBehaviour
 
         if (!isPaused)
         {
-            // Calculate rotation angle based on mouse position
-            Vector3 mousePosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            Vector3 lookDirection = mousePosition - transform.position;
-            float angle = Mathf.Atan2(lookDirection.y, lookDirection.x) * Mathf.Rad2Deg;
-
-            // ... (your existing code for rotation)
-
             // Handle shooting
             if (controlmode == Controls.pc && Input.GetButtonDown("Fire1") && Time.time >= nextFireTime)
             {
@@ -117,6 +144,7 @@ public class PlayerController : MonoBehaviour
                 nextFireTime = Time.time + 1f / fireRate; // Set the next allowed fire time
             }
         }
+
         SetAnimations();
 
         if (moveX != 0)
@@ -124,9 +152,8 @@ public class PlayerController : MonoBehaviour
             FlipSprite(moveX);
         }
 
-        //impactEffect
-
-        if(!wasonGround && isGroundedBool)
+        // ImpactEffect
+        if (!wasonGround && isGroundedBool)
         {
             if (ImpactEffect != null)
             {
@@ -134,65 +161,75 @@ public class PlayerController : MonoBehaviour
                 ImpactEffect.Stop();
                 if (footsteps != null)
                 {
-                    ImpactEffect.transform.position = new Vector2(footsteps.transform.position.x,footsteps.transform.position.y-0.2f);
+                    ImpactEffect.transform.position = new Vector2(footsteps.transform.position.x, footsteps.transform.position.y - 0.2f);
                 }
                 ImpactEffect.Play();
             }
         }
 
         wasonGround = isGroundedBool;
-
-        
     }
+
     public void SetAnimations()
     {
         if (playeranim == null) return;
 
-        if (moveX != 0 && isGroundedBool)
+        if (Mathf.Abs(moveX) > 0.05f && isGroundedBool)
         {
             playeranim.SetBool("run", true);
-            if (footsteps != null) footEmissions.rateOverTime= 35f;
+            if (footsteps != null) footEmissions.rateOverTime = 35f;
         }
         else
         {
-            playeranim.SetBool("run",false);
+            playeranim.SetBool("run", false);
             if (footsteps != null) footEmissions.rateOverTime = 0f;
         }
 
         playeranim.SetBool("isGrounded", isGroundedBool);
-       
     }
 
     private void FlipSprite(float direction)
     {
-        if (direction > 0)
+        if (direction > 0.05f)
         {
-            // Moving right, flip sprite to the right
             transform.localScale = new Vector3(1, 1, 1);
         }
-        else if (direction < 0)
+        else if (direction < -0.05f)
         {
-            // Moving left, flip sprite to the left
             transform.localScale = new Vector3(-1, 1, 1);
         }
     }
+
     private void FixedUpdate()
     {
-        // Player movement
-        if (controlmode == Controls.pc)
+        float move = 0f;
+
+#if UNITY_EDITOR || UNITY_STANDALONE
+        // Keyboard controls on PC / Unity Editor (avoids Android accelerometer/joystick drift)
+        if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A))
         {
-            moveX = Input.GetAxis("Horizontal");
+            move -= 1f;
         }
-       
+        if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D))
+        {
+            move += 1f;
+        }
+#endif
 
+        // On mobile or if no keyboard input, use the on-screen button state
+        if (move == 0f)
+        {
+            move = mobileMoveX;
+        }
 
+        moveX = move;
         rb.linearVelocity = new Vector2(moveX * moveSpeed, rb.linearVelocity.y);
     }
 
-    private void Jump(float jumpForce)
+    private void Jump(float force)
     {
         rb.linearVelocity = new Vector2(rb.linearVelocity.x, 0); // Zero out vertical velocity
-        rb.AddForce(Vector2.up * jumpForce, ForceMode2D.Impulse);
+        rb.AddForce(Vector2.up * force, ForceMode2D.Impulse);
         if (playeranim != null)
         {
             playeranim.SetTrigger("jump");
@@ -207,64 +244,68 @@ public class PlayerController : MonoBehaviour
         RaycastHit2D hit = Physics2D.Raycast(rayOrigin, Vector2.down, rayLength, groundLayer);
         return hit.collider != null;
     }
+
     private void OnCollisionEnter2D(Collision2D collision)
     {
-        if(collision.gameObject.tag == "killzone")
+        if (collision.gameObject.tag == "killzone")
         {
             GameManager.instance.Death();
         }
     }
-    
 
+    // Mobile button controls
+    public void SetLeftHeld(bool held)
+    {
+        isLeftHeld = held;
+        UpdateMobileMove();
+    }
 
+    public void SetRightHeld(bool held)
+    {
+        isRightHeld = held;
+        UpdateMobileMove();
+    }
 
+    private void UpdateMobileMove()
+    {
+        if (isLeftHeld && !isRightHeld)
+        {
+            mobileMoveX = -1f;
+        }
+        else if (isRightHeld && !isLeftHeld)
+        {
+            mobileMoveX = 1f;
+        }
+        else
+        {
+            mobileMoveX = 0f;
+        }
+        moveX = mobileMoveX;
+    }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    //mobile;
     public void MobileMove(float value)
     {
+        mobileMoveX = value;
         moveX = value;
     }
+
     public void MobileJump()
     {
         if (isGroundedBool)
         {
-            // Perform initial jump
             Jump(jumpForce);
         }
-        else
+        else if (canDoubleJump)
         {
-            // Perform double jump if allowed
-            if (canDoubleJump)
-            {
-                Jump(doubleJumpForce);
-                canDoubleJump = false; // Disable double jump until grounded again
-            }
+            Jump(doubleJumpForce);
+            canDoubleJump = false; // Disable double jump until grounded again
         }
     }
 
     public void Shoot()
     {
-        //GameObject fireBall = Instantiate(projectile, firePoint.position, Quaternion.identity);
-        //fireBall.GetComponent<Rigidbody2D>().AddForce(firePoint.right * 500f);
+        // GameObject fireBall = Instantiate(projectile, firePoint.position, Quaternion.identity);
+        // fireBall.GetComponent<Rigidbody2D>().AddForce(firePoint.right * 500f);
     }
 
     public void MobileShoot()
@@ -272,8 +313,7 @@ public class PlayerController : MonoBehaviour
         if (Time.time >= nextFireTime)
         {
             Shoot();
-            nextFireTime = Time.time + 1f / fireRate; // Set the next allowed fire time
+            nextFireTime = Time.time + 1f / fireRate;
         }
     }
-
 }
